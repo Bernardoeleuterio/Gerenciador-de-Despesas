@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
 import { beforeAll, describe, expect, it } from "vitest";
+import { CATEGORIAS_PADRAO } from "@/lib/dados/categorias-padrao";
 
 // Postgres de verdade, em memória: a base do Supabase + todas as migrações, em ordem.
 const base = readFileSync(new URL("./supabase-base.sql", import.meta.url), "utf8");
@@ -93,6 +94,15 @@ describe("schema", () => {
       );
       expect(rows[0].total).toBe(12);
     }
+  });
+
+  it("as categorias do banco são as mesmas da demo", async () => {
+    const { rows } = await db.query<{ nome: string; icone: string }>(
+      "select nome, icone from categorias where familia_id = $1 order by nome",
+      [FAMILIA_A],
+    );
+    const daDemo = [...CATEGORIAS_PADRAO].sort((a, b) => (a.nome < b.nome ? -1 : 1));
+    expect(rows).toEqual(daDemo.map(({ nome, icone }) => ({ nome, icone })));
   });
 
   it("recusa valor zero, negativo ou acima de R$ 10 milhões", async () => {
