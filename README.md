@@ -2,7 +2,7 @@
 
 App para a família lançar gastos em segundos — digitando `50 ifood` — e ver, no fim do mês, quanto foi gasto, em quê e por quem.
 
-> 🚧 **Em desenvolvimento.** Por enquanto existem a fundação do projeto (estrutura, modos, testes e CI) e o banco de dados com RLS.
+> 🚧 **Em desenvolvimento.** Por enquanto existem a fundação do projeto (estrutura, modos, testes e CI), o banco de dados com RLS e a camada de dados dos dois modos. As telas vêm a seguir.
 
 ## Duas versões do mesmo código
 
@@ -13,6 +13,17 @@ App para a família lançar gastos em segundos — digitando `50 ifood` — e ve
 | **Backend** | Supabase (Auth, RLS, Realtime) | Nenhum |
 
 O modo vem da variável `NEXT_PUBLIC_MODO`. Sem ela, o app sobe em **demo** — o modo que nunca toca em dado real. Um valor inválido derruba o build na hora, em vez de cair num modo que ninguém escolheu.
+
+### A tela não sabe de onde vêm os dados
+
+As telas só conhecem a interface `Repositorio` (`src/lib/dados/`), e `obterRepositorio()` entrega a implementação do modo atual:
+
+- **`RepositorioSupabase`** — família: lê e grava no Supabase; quem garante as regras é o banco (RLS, FKs compostas, checks).
+- **`RepositorioDemo`** — portfólio: guarda tudo no `localStorage` de quem visita e aplica, em código, as mesmas regras do banco.
+
+Cada modo carrega só o próprio código: a demo nunca baixa o cliente do Supabase. Os totais do mês saem de uma função pura (`resumo.ts`), a mesma nos dois modos, em centavos inteiros.
+
+Para os dois se comportarem igual, a **mesma suíte de testes de contrato** roda contra os dois: a demo no `npm test`, e o Supabase no CI, contra um Supabase local com login de verdade.
 
 ## Stack
 
@@ -44,16 +55,18 @@ O schema vive em `supabase/migrations/` e só muda por migração. Tudo pertence
 - **Privilégios de coluna** impedem mover um lançamento para outra família ou trocar o autor num `UPDATE`.
 - **Sem login, nada:** o papel `anon` não tem nem permissão de tabela.
 
-Os testes em `tests/banco/` sobem um Postgres em memória ([PGlite](https://pglite.dev)), aplicam as migrações e provam o isolamento com duas famílias. Rodam no `npm test`, sem Docker. No CI, as mesmas migrações também sobem no Postgres do Supabase, seguidas do advisor de segurança.
+Os testes em `tests/banco/` sobem um Postgres em memória ([PGlite](https://pglite.dev)), aplicam as migrações e provam o isolamento com duas famílias. Rodam no `npm test`, sem Docker. No CI, as mesmas migrações também sobem num Supabase local (banco, Auth e API), seguidas do advisor de segurança e dos testes de contrato do `RepositorioSupabase`.
 
 ## Estrutura
 
 ```text
 src/app/          telas (App Router)
-src/lib/          regras e configuração, sem tela (ex.: modo.ts)
+src/lib/          regras e configuração, sem tela (modo.ts, resumo.ts)
+src/lib/dados/    a interface Repositorio e as duas implementações
 supabase/         configuração e migrações do banco (Supabase CLI)
 tests/banco/      testes do schema e do RLS num Postgres em memória
-.github/workflows CI: lint, testes, build, auditoria e migrações a cada push
+tests/contrato/   a suíte que demo e Supabase precisam passar igual
+.github/workflows CI: lint, testes, build, auditoria e Supabase local a cada push
 ```
 
 ## Segurança
