@@ -47,7 +47,7 @@ jobs:
           NEXT_PUBLIC_MODO: demo
 
   banco:
-    name: Migrações no Postgres do Supabase
+    name: Supabase local (migrações, advisor e contrato)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -62,10 +62,25 @@ jobs:
       - name: Instalar dependências
         run: npm ci
 
-      # Os testes rodam num Postgres em memória; aqui as mesmas migrações
-      # precisam subir no Postgres de verdade do Supabase.
-      - name: Subir o Postgres do Supabase e aplicar as migrações
-        run: npx supabase db start
+      # Os testes do npm test rodam num Postgres em memória; aqui as mesmas
+      # migrações sobem no Supabase de verdade. Só banco, Auth e API: o resto
+      # (Studio, Storage, Realtime...) não entra.
+      - name: Subir o Supabase local e aplicar as migrações
+        run: npx supabase start -x realtime,storage-api,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
 
       - name: Advisor de segurança do Supabase
         run: npx supabase db advisors --type security --fail-on warn
+
+      # A mesma suíte de contrato da demo, agora contra o RepositorioSupabase,
+      # com login de verdade, RLS e FKs compostas valendo.
+      - name: Testes de contrato no Supabase local
+        run: |
+          npx supabase status -o env | grep -E '^[A-Z_]+=' > "$RUNNER_TEMP/supabase.env"
+          set -a; . "$RUNNER_TEMP/supabase.env"; set +a
+          export SUPABASE_TESTE_URL="$API_URL"
+          export SUPABASE_TESTE_CHAVE_PUBLICA="${ANON_KEY:-$PUBLISHABLE_KEY}"
+          export SUPABASE_TESTE_CHAVE_SECRETA="${SERVICE_ROLE_KEY:-$SECRET_KEY}"
+          : "${SUPABASE_TESTE_URL:?o supabase status não deu a URL da API}"
+          : "${SUPABASE_TESTE_CHAVE_PUBLICA:?o supabase status não deu a chave pública}"
+          : "${SUPABASE_TESTE_CHAVE_SECRETA:?o supabase status não deu a chave secreta}"
+          npx vitest run tests/contrato/supabase.test.ts
