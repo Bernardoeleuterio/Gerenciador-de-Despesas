@@ -10,7 +10,7 @@ const ALHEIO = "7d2b6a3e-1c4f-4e8a-9b0d-5f6e7a8b9c0d";
  * e contra o Supabase local (no CI). Chame dentro de um `describe`.
  *
  * `criar` devolve um repositório de uma família nova, recém-criada, com as
- * categorias padrão e nenhum lançamento.
+ * categorias padrão, ao menos uma conta e nenhum lançamento.
  */
 export function testarContrato(criar: () => Promise<Repositorio>) {
   let repo: Repositorio;
@@ -124,11 +124,19 @@ export function testarContrato(criar: () => Promise<Repositorio>) {
     expect(await repo.lancamentosDoMes("2026-11")).toEqual([]);
   });
 
-  it("alterar ou excluir o que não existe dá nao_encontrado", async () => {
-    await expect(repo.alterarLancamento(ALHEIO, { valorCentavos: 100 })).rejects.toMatchObject({
+  it("alterar sem mudar nada devolve o lançamento como está", async () => {
+    const criado = await repo.criarLancamento(base);
+    expect(await repo.alterarLancamento(criado.id, {})).toEqual(criado);
+  });
+
+  it.each([
+    ["que não existe", ALHEIO],
+    ["que nem é um id", "nao-e-um-id"],
+  ])("alterar ou excluir lançamento %s dá nao_encontrado", async (_, id) => {
+    await expect(repo.alterarLancamento(id, { valorCentavos: 100 })).rejects.toMatchObject({
       codigo: "nao_encontrado",
     });
-    await expect(repo.excluirLancamento(ALHEIO)).rejects.toMatchObject({ codigo: "nao_encontrado" });
+    await expect(repo.excluirLancamento(id)).rejects.toMatchObject({ codigo: "nao_encontrado" });
   });
 
   it("recusa mês em formato errado", async () => {
