@@ -5,13 +5,20 @@ import {
   type AlteracaoLancamento,
   type Categoria,
   type Conta,
+  type Convite,
   type Familia,
   type Lancamento,
   type Membro,
+  type NovoConvite,
   type NovoLancamento,
   type Repositorio,
 } from "./repositorio";
-import { limitesDoMes, validarAlteracaoLancamento, validarNovoLancamento } from "./validacao";
+import {
+  limitesDoMes,
+  validarAlteracaoLancamento,
+  validarNovoConvite,
+  validarNovoLancamento,
+} from "./validacao";
 
 /** O pedaço do localStorage que a demo usa — injetável, para testar sem navegador. */
 export interface Armazenamento {
@@ -36,10 +43,11 @@ interface EstadoDemo {
   contas: Conta[];
   lancamentos: LancamentoGuardado[];
   proximaSequencia: number;
+  convites: Convite[];
 }
 
 function estadoInicial(): EstadoDemo {
-  const voce: Membro = { id: crypto.randomUUID(), apelido: "Você", papel: "admin" };
+  const voce: Membro = { id: crypto.randomUUID(), apelido: "Visitante", papel: "admin" };
   const ana: Membro = { id: crypto.randomUUID(), apelido: "Ana", papel: "membro" };
   const conta = (nome: string, tipo: Conta["tipo"], extra: Partial<Conta> = {}): Conta => ({
     id: crypto.randomUUID(),
@@ -69,6 +77,7 @@ function estadoInicial(): EstadoDemo {
     ],
     lancamentos: [],
     proximaSequencia: 1,
+    convites: [],
   };
 }
 
@@ -84,7 +93,9 @@ function carregar(armazenamento: Armazenamento | null): EstadoDemo | null {
       Array.isArray(estado.categorias) &&
       Array.isArray(estado.contas) &&
       Array.isArray(estado.lancamentos);
-    return valido ? (estado as EstadoDemo) : null;
+    if (!valido) return null;
+    // Guardado antes dos convites existirem: segue valendo, sem convite nenhum
+    return { ...(estado as EstadoDemo), convites: Array.isArray(estado.convites) ? estado.convites : [] };
   } catch {
     // JSON quebrado ou armazenamento bloqueado (aba anônima): começa do zero
     return null;
@@ -187,6 +198,63 @@ export class RepositorioDemo implements Repositorio {
     const lancamento = this.buscar(id);
     this.estado.lancamentos.splice(this.estado.lancamentos.indexOf(lancamento), 1);
     this.salvar();
+  }
+
+  async convites(): Promise<Convite[]> {
+    if (!this.souAdmin()) return [];
+    return ordenarPor(structuredClone(this.estado.convites), (convite) => convite.apelido);
+  }
+
+  async convidar(novo: NovoConvite): Promise<Convite> {
+    const dados = validarNovoConvite(novo);
+    this.exigirAdmin();
+    if (this.estado.convites.some((convite) => convite.email === dados.email)) {
+      throw new ErroRepositorio("invalido", "Já existe um convite para esse e-mail.");
+    }
+    // Na demo ninguém tem conta: o convite fica pendente, e ninguém recebe nada
+    const convite: Convite = {
+      id: crypto.randomUUID(),
+      email: dados.email,
+      apelido: dados.apelido,
+      papel: dados.papel ?? "membro",
+    };
+    this.estado.convites.push(convite);
+    this.salvar();
+    return structuredClone(convite);
+  }
+
+  async cancelarConvite(id: string): Promise<void> {
+    this.exigirAdmin();
+    const indice = this.estado.convites.findIndex((convite) => convite.id === id);
+    if (indice === -1) throw new ErroRepositorio("nao_encontrado", "Convite não encontrado.");
+    this.estado.convites.splice(indice, 1);
+    this.salvar();
+  }
+
+  async removerMembro(id: string): Promise<void> {
+    this.exigirAdmin();
+    if (id === this.estado.euId) {
+      throw new ErroRepositorio("invalido", "Você não pode remover a si mesmo.");
+    }
+    const indice = this.estado.membros.findIndex((membro) => membro.id === id);
+    if (indice === -1) throw new ErroRepositorio("nao_encontrado", "Membro não encontrado.");
+    this.estado.membros.splice(indice, 1);
+    // O papel dos "on delete set null" do banco
+    for (const lancamento of this.estado.lancamentos) {
+      if (lancamento.pagoPor === id) lancamento.pagoPor = null;
+    }
+    for (const conta of this.estado.contas) {
+      if (conta.donoId === id) conta.donoId = null;
+    }
+    this.salvar();
+  }
+
+  private souAdmin(): boolean {
+    return this.estado.membros.some((membro) => membro.id === this.estado.euId && membro.papel === "admin");
+  }
+
+  private exigirAdmin(): void {
+    if (!this.souAdmin()) throw new ErroRepositorio("sem_permissao", "Só o admin da família faz isso.");
   }
 
   private buscar(id: string): LancamentoGuardado {

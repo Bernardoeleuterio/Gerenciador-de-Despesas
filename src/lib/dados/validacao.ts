@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { ErroRepositorio, type AlteracaoLancamento, type NovoLancamento } from "./repositorio";
+import {
+  ErroRepositorio,
+  type AlteracaoLancamento,
+  type NovoConvite,
+  type NovoLancamento,
+} from "./repositorio";
 
 /**
  * As regras de um lançamento, as mesmas do banco (os `check` da migração).
@@ -23,6 +28,13 @@ const esquemaAlteracaoLancamento = esquemaNovoLancamento.partial();
 
 const esquemaMes = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 
+// O e-mail é normalizado antes de validar: é assim que o banco guarda e compara.
+const esquemaNovoConvite = z.strictObject({
+  email: z.string().trim().toLowerCase().max(254).pipe(z.email()),
+  apelido: z.string().trim().min(1).max(40),
+  papel: z.enum(["admin", "membro"]).optional(),
+});
+
 function validar<T>(esquema: z.ZodType<T>, valor: unknown, oQue: string): T {
   const resultado = esquema.safeParse(valor);
   if (!resultado.success) {
@@ -38,6 +50,10 @@ export function validarNovoLancamento(novo: NovoLancamento): NovoLancamento {
 
 export function validarAlteracaoLancamento(mudancas: AlteracaoLancamento): AlteracaoLancamento {
   return validar(esquemaAlteracaoLancamento, mudancas, "Alteração");
+}
+
+export function validarNovoConvite(novo: NovoConvite): NovoConvite {
+  return validar(esquemaNovoConvite, novo, "Convite");
 }
 
 /** Primeiro dia do mês e primeiro dia do mês seguinte (exclusivo), em `AAAA-MM-DD`. */

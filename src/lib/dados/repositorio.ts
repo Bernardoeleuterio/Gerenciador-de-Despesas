@@ -69,6 +69,23 @@ export interface NovoLancamento {
 
 export type AlteracaoLancamento = Partial<NovoLancamento>;
 
+/** Um convite que ainda não virou membro. */
+export interface Convite {
+  id: string;
+  /** Sempre minúsculo e sem espaços nas pontas. */
+  email: string;
+  /** Como a pessoa vai aparecer quando entrar. */
+  apelido: string;
+  papel: Papel;
+}
+
+export interface NovoConvite {
+  email: string;
+  apelido: string;
+  /** Sem `papel`, a pessoa entra como membro. */
+  papel?: Papel;
+}
+
 export interface Repositorio {
   familia(): Promise<Familia>;
   /** O membro que está usando o app. */
@@ -84,6 +101,14 @@ export interface Repositorio {
   criarLancamento(novo: NovoLancamento): Promise<Lancamento>;
   alterarLancamento(id: string, mudancas: AlteracaoLancamento): Promise<Lancamento>;
   excluirLancamento(id: string): Promise<void>;
+  /** Convites pendentes, por apelido. Só o admin vê; para os outros, lista vazia. */
+  convites(): Promise<Convite[]>;
+  /** Só o admin. Se a pessoa já tem conta com esse e-mail, entra na hora. */
+  convidar(novo: NovoConvite): Promise<Convite>;
+  /** Só o admin. */
+  cancelarConvite(id: string): Promise<void>;
+  /** Só o admin, e nunca a si mesmo. Os lançamentos ficam, sem "quem pagou". */
+  removerMembro(id: string): Promise<void>;
 }
 
 export type CodigoErro = "invalido" | "nao_encontrado" | "sem_permissao" | "indisponivel";

@@ -6,13 +6,20 @@ import {
   type Categoria,
   type CodigoErro,
   type Conta,
+  type Convite,
   type Familia,
   type Lancamento,
   type Membro,
+  type NovoConvite,
   type NovoLancamento,
   type Repositorio,
 } from "./repositorio";
-import { limitesDoMes, validarAlteracaoLancamento, validarNovoLancamento } from "./validacao";
+import {
+  limitesDoMes,
+  validarAlteracaoLancamento,
+  validarNovoConvite,
+  validarNovoLancamento,
+} from "./validacao";
 
 // As linhas como o banco devolve (snake_case).
 interface LinhaMembro {
@@ -75,6 +82,7 @@ function paraLancamento(linha: LinhaLancamento): Lancamento {
 const DADO_INVALIDO = new Set([
   "23502", // faltou campo obrigatório
   "23503", // FK composta: aponta para algo que não é desta família
+  "23505", // repetido (ex.: dois convites para o mesmo e-mail)
   "23514", // check da tabela
   "22P02", // texto onde se esperava uuid ou número
   "22003", // número fora da faixa
@@ -100,8 +108,14 @@ function traduzir(erro: { code?: string; message: string }): ErroRepositorio {
   return new ErroRepositorio(codigo, MENSAGEM[codigo], { cause: erro });
 }
 
-function naoEncontrado(): ErroRepositorio {
-  return new ErroRepositorio("nao_encontrado", MENSAGEM.nao_encontrado);
+function naoEncontrado(oQue = "Lançamento"): ErroRepositorio {
+  return new ErroRepositorio("nao_encontrado", `${oQue} não encontrado.`);
+}
+
+function exigirAdmin(eu: Membro): void {
+  if (eu.papel !== "admin") {
+    throw new ErroRepositorio("sem_permissao", "Só o admin da família faz isso.");
+  }
 }
 
 /** Um id que nem tem forma de uuid não existe — igual à demo, sem ir ao banco. */
@@ -242,6 +256,64 @@ export class RepositorioSupabase implements Repositorio {
       .select("id");
     if (error) throw traduzir(error);
     if (data.length === 0) throw naoEncontrado();
+  }
+
+  async convites(): Promise<Convite[]> {
+    // Para quem não é admin, o RLS devolve a lista vazia
+    const linhas = await this.listar<Convite>("convites", "id, email, apelido, papel");
+    return ordenarPor(linhas, (convite) => convite.apelido);
+  }
+
+  async convidar(novo: NovoConvite): Promise<Convite> {
+    const dados = validarNovoConvite(novo);
+    const { familia, eu } = await this.contexto();
+    exigirAdmin(eu);
+    // Se a pessoa já tem conta, o banco transforma o convite em membro na hora
+    const { data, error } = await this.cliente
+      .from("convites")
+      .insert({
+        familia_id: familia.id,
+        email: dados.email,
+        apelido: dados.apelido,
+        papel: dados.papel ?? "membro",
+      })
+      .select("id, email, apelido, papel")
+      .single();
+    if (error?.code === "23505") {
+      throw new ErroRepositorio("invalido", "Já existe um convite para esse e-mail.", { cause: error });
+    }
+    if (error) throw traduzir(error);
+    return data as Convite;
+  }
+
+  async cancelarConvite(id: string): Promise<void> {
+    const { familia, eu } = await this.contexto();
+    exigirAdmin(eu);
+    if (!FORMA_DE_UUID.test(id)) throw naoEncontrado("Convite");
+    const { data, error } = await this.cliente
+      .from("convites")
+      .delete()
+      .eq("id", id)
+      .eq("familia_id", familia.id)
+      .select("id");
+    if (error) throw traduzir(error);
+    if (data.length === 0) throw naoEncontrado("Convite");
+  }
+
+  async removerMembro(id: string): Promise<void> {
+    const { familia, eu } = await this.contexto();
+    exigirAdmin(eu);
+    if (id === eu.id) throw new ErroRepositorio("invalido", "Você não pode remover a si mesmo.");
+    if (!FORMA_DE_UUID.test(id)) throw naoEncontrado("Membro");
+    // Os lançamentos ficam: o banco põe "quem pagou" como nulo (on delete set null)
+    const { data, error } = await this.cliente
+      .from("membros")
+      .delete()
+      .eq("id", id)
+      .eq("familia_id", familia.id)
+      .select("id");
+    if (error) throw traduzir(error);
+    if (data.length === 0) throw naoEncontrado("Membro");
   }
 
   private async listar<T>(tabela: string, colunas: string): Promise<T[]> {

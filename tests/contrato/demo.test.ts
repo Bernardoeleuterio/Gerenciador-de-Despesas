@@ -65,4 +65,36 @@ describe("RepositorioDemo no navegador", () => {
     criado.valorCentavos = 1;
     expect((await repo.lancamentosDoMes("2026-11"))[0].valorCentavos).toBe(5_000);
   });
+
+  it("dado guardado antes dos convites existirem continua valendo", async () => {
+    const armazenamento = new ArmazenamentoEmMemoria();
+    const criado = await lancamento(new RepositorioDemo(armazenamento));
+    const antigo = JSON.parse(armazenamento.getItem(CHAVE_DEMO)!);
+    delete antigo.convites;
+    armazenamento.setItem(CHAVE_DEMO, JSON.stringify(antigo));
+
+    const repo = new RepositorioDemo(armazenamento);
+    expect(await repo.lancamentosDoMes("2026-11")).toEqual([criado]);
+    expect(await repo.convites()).toEqual([]);
+  });
+
+  it("na pele de um membro comum: não vê convites, não convida e não remove ninguém", async () => {
+    const armazenamento = new ArmazenamentoEmMemoria();
+    const daAdmin = new RepositorioDemo(armazenamento);
+    const convite = await daAdmin.convidar({ email: "bia@exemplo.com", apelido: "Bia" });
+    const membros = await daAdmin.membros();
+    const ana = membros.find((membro) => membro.apelido === "Ana")!;
+    const voce = membros.find((membro) => membro.apelido === "Visitante")!;
+
+    // A mesma família, agora usada pela Ana
+    const estado = JSON.parse(armazenamento.getItem(CHAVE_DEMO)!);
+    armazenamento.setItem(CHAVE_DEMO, JSON.stringify({ ...estado, euId: ana.id }));
+    const daAna = new RepositorioDemo(armazenamento);
+
+    expect(await daAna.convites()).toEqual([]);
+    const semPermissao = { codigo: "sem_permissao" };
+    await expect(daAna.convidar({ email: "cris@exemplo.com", apelido: "Cris" })).rejects.toMatchObject(semPermissao);
+    await expect(daAna.cancelarConvite(convite.id)).rejects.toMatchObject(semPermissao);
+    await expect(daAna.removerMembro(voce.id)).rejects.toMatchObject(semPermissao);
+  });
 });

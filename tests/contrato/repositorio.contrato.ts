@@ -10,7 +10,8 @@ const ALHEIO = "7d2b6a3e-1c4f-4e8a-9b0d-5f6e7a8b9c0d";
  * e contra o Supabase local (no CI). Chame dentro de um `describe`.
  *
  * `criar` devolve um repositório de uma família nova, recém-criada, com as
- * categorias padrão, ao menos uma conta e nenhum lançamento.
+ * categorias padrão, ao menos uma conta, nenhum lançamento e nenhum convite
+ * pendente; quem usa é admin, e há mais um membro comum.
  */
 export function testarContrato(criar: () => Promise<Repositorio>) {
   let repo: Repositorio;
@@ -141,5 +142,65 @@ export function testarContrato(criar: () => Promise<Repositorio>) {
 
   it("recusa mês em formato errado", async () => {
     await expect(repo.lancamentosDoMes("2026-13")).rejects.toMatchObject({ codigo: "invalido" });
+  });
+
+  it("o admin convida: o convite fica pendente, com o e-mail normalizado", async () => {
+    const convite = await repo.convidar({ email: "  Bia@Exemplo.com ", apelido: " Bia " });
+    expect(convite).toEqual({
+      id: expect.any(String),
+      email: "bia@exemplo.com",
+      apelido: "Bia",
+      papel: "membro",
+    });
+    expect(await repo.convites()).toEqual([convite]);
+  });
+
+  it.each([
+    ["e-mail inválido", { email: "bia@", apelido: "Bia" }],
+    ["sem apelido", { email: "bia@exemplo.com", apelido: "   " }],
+    ["apelido longo demais", { email: "bia@exemplo.com", apelido: "B".repeat(41) }],
+  ])("recusa convite com %s", async (_, errado) => {
+    await expect(repo.convidar(errado)).rejects.toMatchObject({ codigo: "invalido" });
+    expect(await repo.convites()).toEqual([]);
+  });
+
+  it("não convida o mesmo e-mail duas vezes", async () => {
+    await repo.convidar({ email: "bia@exemplo.com", apelido: "Bia" });
+    await expect(repo.convidar({ email: "BIA@exemplo.com", apelido: "Bia" })).rejects.toMatchObject({
+      codigo: "invalido",
+    });
+  });
+
+  it("cancela convite; cancelar o que não existe dá nao_encontrado", async () => {
+    const convite = await repo.convidar({ email: "bia@exemplo.com", apelido: "Bia", papel: "admin" });
+    await repo.cancelarConvite(convite.id);
+    expect(await repo.convites()).toEqual([]);
+    for (const id of [convite.id, "nao-e-um-id"]) {
+      await expect(repo.cancelarConvite(id)).rejects.toMatchObject({ codigo: "nao_encontrado" });
+    }
+  });
+
+  it("o admin remove outro membro: o que ele pagou fica sem 'quem pagou'", async () => {
+    const eu = await repo.euMesmo();
+    expect(eu.papel).toBe("admin");
+    const outro = (await repo.membros()).find((membro) => membro.id !== eu.id)!;
+    const lancamento = await repo.criarLancamento({ ...base, pagoPor: outro.id });
+
+    await repo.removerMembro(outro.id);
+    expect((await repo.membros()).map((membro) => membro.id)).toEqual([eu.id]);
+    expect(await repo.lancamentosDoMes("2026-11")).toEqual([{ ...lancamento, pagoPor: null }]);
+  });
+
+  it("ninguém remove a si mesmo", async () => {
+    const eu = await repo.euMesmo();
+    await expect(repo.removerMembro(eu.id)).rejects.toMatchObject({ codigo: "invalido" });
+    expect((await repo.membros()).map((membro) => membro.id)).toContain(eu.id);
+  });
+
+  it.each([
+    ["que não existe", ALHEIO],
+    ["que nem é um id", "nao-e-um-id"],
+  ])("remover membro %s dá nao_encontrado", async (_, id) => {
+    await expect(repo.removerMembro(id)).rejects.toMatchObject({ codigo: "nao_encontrado" });
   });
 }
