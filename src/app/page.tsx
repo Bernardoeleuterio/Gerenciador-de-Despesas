@@ -1,23 +1,12 @@
-import { MODO } from "@/lib/modo";
+import { SeloDoModo } from "@/componentes/selo-do-modo";
+import { Painel } from "./painel";
 
 export default function Inicio() {
-  const emDemo = MODO === "demo";
-
   return (
     <main className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center gap-6 px-4 py-16">
-      <span
-        className={`w-fit rounded-full px-3 py-1 text-xs font-medium ${
-          emDemo
-            ? "bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200"
-            : "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-200"
-        }`}
-      >
-        {emDemo ? "Modo demonstração — dados fictícios" : "Modo família"}
-      </span>
+      <SeloDoModo />
 
-      <h1 className="text-3xl font-semibold tracking-tight">
-        Gerenciador de Despesas
-      </h1>
+      <h1 className="text-3xl font-semibold tracking-tight">Gerenciador de Despesas</h1>
 
       <p className="text-lg leading-relaxed text-zinc-600 dark:text-zinc-400">
         Lance um gasto em segundos — digitando{" "}
@@ -27,8 +16,10 @@ export default function Inicio() {
         — e veja no fim do mês quanto a família gastou, em quê e por quem.
       </p>
 
+      <Painel />
+
       <p className="text-sm text-zinc-500">
-        Em construção: por enquanto, só a fundação do projeto.
+        Em construção: por enquanto, o login e os membros da família.
       </p>
     </main>
   );

@@ -1,4 +1,6 @@
 import { MODO, type Modo } from "@/lib/modo";
+import { exigirConfigSupabase } from "@/lib/supabase/config";
+import { supabaseDoNavegador } from "@/lib/supabase/navegador";
 import type { Armazenamento } from "./demo";
 import type { Repositorio } from "./repositorio";
 
@@ -24,20 +26,12 @@ export async function criarRepositorio(config: ConfiguracaoRepositorio): Promise
     return new RepositorioDemo(config.armazenamento);
   }
 
-  const { supabaseUrl, supabaseChave } = config;
-  if (!supabaseUrl || !supabaseChave) {
-    const faltando = [
-      !supabaseUrl && "NEXT_PUBLIC_SUPABASE_URL",
-      !supabaseChave && "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
-    ].filter(Boolean);
-    throw new Error(`Modo família sem ${faltando.join(" e ")}. Veja o .env.example.`);
-  }
-
-  const [{ createClient }, { RepositorioSupabase }] = await Promise.all([
-    import("@supabase/supabase-js"),
+  const supabase = exigirConfigSupabase(config.supabaseUrl, config.supabaseChave);
+  const [cliente, { RepositorioSupabase }] = await Promise.all([
+    supabaseDoNavegador(supabase),
     import("./supabase"),
   ]);
-  return new RepositorioSupabase(createClient(supabaseUrl, supabaseChave));
+  return new RepositorioSupabase(cliente);
 }
 
 let repositorioDaPagina: Promise<Repositorio> | null = null;
