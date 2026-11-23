@@ -72,8 +72,10 @@ jobs:
         run: npx supabase db advisors --type security --fail-on warn
 
       # A mesma suíte de contrato da demo, agora contra o RepositorioSupabase,
-      # com login de verdade, RLS e FKs compostas valendo.
-      - name: Testes de contrato no Supabase local
+      # com login de verdade, RLS e FKs compostas valendo; e o login por convite
+      # de ponta a ponta (hook do Auth, convite virando membro, seed). Um
+      # arquivo por vez: o teste do seed limpa as famílias antes de rodar.
+      - name: Testes no Supabase local (contrato e login por convite)
         run: |
           npx supabase status -o env | grep -E '^[A-Z_]+=' > "$RUNNER_TEMP/supabase.env"
           set -a; . "$RUNNER_TEMP/supabase.env"; set +a
@@ -83,4 +85,4 @@ jobs:
           : "${SUPABASE_TESTE_URL:?o supabase status não deu a URL da API}"
           : "${SUPABASE_TESTE_CHAVE_PUBLICA:?o supabase status não deu a chave pública}"
           : "${SUPABASE_TESTE_CHAVE_SECRETA:?o supabase status não deu a chave secreta}"
-          npx vitest run tests/contrato/supabase.test.ts
+          npx vitest run tests/contrato/supabase.test.ts tests/supabase --no-file-parallelism
