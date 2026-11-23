@@ -234,24 +234,43 @@ describe("RLS: papéis dentro da família", () => {
 
   it("só admin vê e cria convites", async () => {
     const convidar = () =>
-      db.query("insert into convites (familia_id, email) values ($1, 'novo@exemplo.com')", [FAMILIA_A]);
+      db.query("insert into convites (familia_id, email, apelido) values ($1, 'novo@exemplo.com', 'Novo')", [
+        FAMILIA_A,
+      ]);
     await expect(como(MEMBRO_A, convidar)).rejects.toThrow(/row-level security/);
     await como(ADMIN_A, convidar);
     const { rows } = await como(MEMBRO_A, () => db.query("select id from convites"));
     expect(rows).toHaveLength(0);
   });
 
-  it("só admin adiciona ou remove membros", async () => {
+  it("membro só nasce de convite: nem o admin insere membro pelo app", async () => {
+    for (const usuario of [MEMBRO_A, ADMIN_A]) {
+      await expect(
+        como(usuario, () =>
+          db.query("insert into membros (familia_id, user_id, apelido) values ($1, $2, 'Intruso')", [
+            FAMILIA_A,
+            SEM_FAMILIA,
+          ]),
+        ),
+      ).rejects.toThrow(/permission denied/);
+    }
+  });
+
+  it("só admin remove membro, e nunca a si mesmo", async () => {
+    const peloMembro = await como(MEMBRO_A, () => db.query("delete from membros where id = $1", [M_ADMIN_A]));
+    expect(peloMembro.affectedRows).toBe(0);
+    const aSiMesmo = await como(ADMIN_A, () => db.query("delete from membros where id = $1", [M_ADMIN_A]));
+    expect(aSiMesmo.affectedRows).toBe(0);
+  });
+
+  it("o admin não tira o próprio papel de admin, mas muda o próprio apelido", async () => {
     await expect(
-      como(MEMBRO_A, () =>
-        db.query("insert into membros (familia_id, user_id, apelido) values ($1, $2, 'Intruso')", [
-          FAMILIA_A,
-          SEM_FAMILIA,
-        ]),
-      ),
+      como(ADMIN_A, () => db.query("update membros set papel = 'membro' where id = $1", [M_ADMIN_A])),
     ).rejects.toThrow(/row-level security/);
-    const removeu = await como(MEMBRO_A, () => db.query("delete from membros where id = $1", [M_ADMIN_A]));
-    expect(removeu.affectedRows).toBe(0);
+    const apelido = await como(ADMIN_A, () =>
+      db.query("update membros set apelido = 'Admin A' where id = $1", [M_ADMIN_A]),
+    );
+    expect(apelido.affectedRows).toBe(1);
   });
 
   it("admin renomeia a família; membro comum não", async () => {
@@ -272,5 +291,116 @@ describe("RLS: papéis dentro da família", () => {
     await expect(
       como(ADMIN_A, () => db.query("delete from familias where id = $1", [FAMILIA_A])),
     ).rejects.toThrow(/permission denied/);
+  });
+});
+
+describe("convites: só entra quem foi convidado", () => {
+  const NOVA = "0000000a-0000-4000-8000-000000000003";
+  const LENTA = "0000000a-0000-4000-8000-000000000004";
+  const VOLTA = "0000000a-0000-4000-8000-000000000005";
+
+  const convidar = (email: string, apelido: string, papel = "membro") =>
+    como(ADMIN_A, () =>
+      db.query("insert into convites (familia_id, email, apelido, papel) values ($1, $2, $3, $4)", [
+        FAMILIA_A,
+        email,
+        apelido,
+        papel,
+      ]),
+    );
+
+  async function membroDe(usuario: string) {
+    const { rows } = await db.query<{ familia_id: string; apelido: string; papel: string }>(
+      "select familia_id, apelido, papel from membros where user_id = $1",
+      [usuario],
+    );
+    return rows;
+  }
+
+  async function hook(email: string) {
+    await db.exec("set role supabase_auth_admin");
+    try {
+      const { rows } = await db.query<{ resposta: unknown }>(
+        "select public.antes_de_criar_usuario($1::jsonb) as resposta",
+        [JSON.stringify({ metadata: { name: "before-user-created" }, user: { email } })],
+      );
+      return rows[0].resposta;
+    } finally {
+      await db.exec("reset role");
+    }
+  }
+
+  it("conta nova, e-mail confirmado e convite: vira membro com o apelido e o papel do convite", async () => {
+    await convidar("nova@exemplo.com", "Nova");
+    await db.query(
+      "insert into auth.users (id, email, email_confirmed_at) values ($1, 'nova@exemplo.com', now())",
+      [NOVA],
+    );
+    expect(await membroDe(NOVA)).toEqual([{ familia_id: FAMILIA_A, apelido: "Nova", papel: "membro" }]);
+    const { rows } = await db.query("select 1 from convites where email = 'nova@exemplo.com'");
+    expect(rows).toHaveLength(0); // convite usado some
+  });
+
+  it("e-mail ainda não confirmado não entra; quando confirma, entra", async () => {
+    await convidar("lenta@exemplo.com", "Lenta");
+    await db.query("insert into auth.users (id, email) values ($1, 'lenta@exemplo.com')", [LENTA]);
+    expect(await membroDe(LENTA)).toEqual([]);
+    await db.query("update auth.users set email_confirmed_at = now() where id = $1", [LENTA]);
+    expect(await membroDe(LENTA)).toHaveLength(1);
+  });
+
+  it("convite para quem já tem conta vale na hora", async () => {
+    await db.query(
+      "insert into auth.users (id, email, email_confirmed_at) values ($1, 'volta@exemplo.com', now())",
+      [VOLTA],
+    );
+    expect(await membroDe(VOLTA)).toEqual([]);
+    await convidar("volta@exemplo.com", "Volta", "admin");
+    expect(await membroDe(VOLTA)).toEqual([{ familia_id: FAMILIA_A, apelido: "Volta", papel: "admin" }]);
+  });
+
+  it("hook do Auth: com convite, a conta pode nascer; sem convite, é recusada", async () => {
+    await convidar("bia@exemplo.com", "Bia");
+    expect(await hook("  Bia@Exemplo.com ")).toEqual({});
+    expect(await hook("estranho@exemplo.com")).toMatchObject({
+      error: { http_code: 403, message: expect.stringMatching(/só por convite/) },
+    });
+  });
+
+  it("o app não chama o hook nem a função que aceita convites", async () => {
+    for (const usuario of [ADMIN_A, null]) {
+      await expect(
+        como(usuario, () => db.query("select public.antes_de_criar_usuario('{}'::jsonb)")),
+      ).rejects.toThrow(/permission denied/);
+    }
+    await expect(
+      como(ADMIN_A, () => db.query("select privado.aceitar_convites($1, 'x@exemplo.com')", [ADMIN_A])),
+    ).rejects.toThrow(/permission denied/);
+  });
+
+  it("o admin remove outro membro: o que ele pagou fica sem 'quem pagou', e ele deixa de ver a família", async () => {
+    const {
+      rows: [nova],
+    } = await db.query<{ id: string }>("select id from membros where user_id = $1", [NOVA]);
+    const {
+      rows: [lancamento],
+    } = await como(NOVA, async () =>
+      db.query<{ id: string }>(
+        `insert into lancamentos (familia_id, tipo, valor_centavos, data, descricao, categoria_id, pago_por)
+         values ($1, 'despesa', 2500, current_date, 'pão', $2, $3) returning id`,
+        [FAMILIA_A, await categoria(FAMILIA_A, "Mercado"), nova.id],
+      ),
+    );
+
+    const removeu = await como(ADMIN_A, () => db.query("delete from membros where id = $1", [nova.id]));
+    expect(removeu.affectedRows).toBe(1);
+
+    const { rows } = await db.query<{ pago_por: string | null }>(
+      "select pago_por from lancamentos where id = $1",
+      [lancamento.id],
+    );
+    expect(rows).toEqual([{ pago_por: null }]);
+    const visto = await como(NOVA, () => db.query("select id from lancamentos"));
+    expect(visto.rows).toEqual([]);
   });
 });

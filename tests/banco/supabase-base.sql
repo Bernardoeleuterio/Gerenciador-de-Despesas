@@ -1,6 +1,7 @@
 -- O pedaço do Supabase que as migrações esperam encontrar, para os testes
 -- rodarem num Postgres em memória (PGlite), sem Docker:
---   * os papéis anon, authenticated e service_role;
+--   * os papéis anon, authenticated e service_role, e o supabase_auth_admin
+--     (com que o Supabase Auth roda, inclusive os hooks);
 --   * o schema auth, com auth.users e auth.uid() (igual ao do Supabase);
 --   * os privilégios padrão que o Supabase dá no schema public.
 -- O CI também aplica as migrações no Postgres de verdade do Supabase.
@@ -8,12 +9,14 @@
 create role anon nologin noinherit;
 create role authenticated nologin noinherit;
 create role service_role nologin noinherit bypassrls;
+create role supabase_auth_admin nologin noinherit;
 
 create schema auth;
 
 create table auth.users (
-  id     uuid primary key,
-  email  text unique
+  id                  uuid primary key,
+  email               text unique,
+  email_confirmed_at  timestamptz
 );
 
 create function auth.uid() returns uuid
