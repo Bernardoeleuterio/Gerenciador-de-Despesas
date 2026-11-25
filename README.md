@@ -2,7 +2,7 @@
 
 App para a família lançar gastos em segundos — digitando `50 ifood` — e ver, no fim do mês, quanto foi gasto, em quê e por quem.
 
-> 🚧 **Em desenvolvimento.** Por enquanto existem a fundação (estrutura, modos, testes e CI), o banco com RLS, a camada de dados dos dois modos, o login com Google por convite, a tela de membros e o parser do lançamento rápido. A tela de lançamento vem a seguir.
+> 🚧 **Em desenvolvimento.** Por enquanto existem a fundação (estrutura, modos, testes e CI), o banco com RLS, a camada de dados dos dois modos, o login com Google por convite, a tela de membros e a tela de lançamento. O mês na tela (totais, navegação e edição) vem a seguir.
 
 ## Duas versões do mesmo código
 
@@ -41,6 +41,8 @@ Um campo só: o texto vira um lançamento. Quem faz isso é `interpretar()` (`sr
 
 Ponto é milhar e vírgula é centavo, como no Brasil. "Dia 12", "12/11" e "sexta" são os mais recentes que não passam de hoje. A categoria vem primeiro das regras que a família ensinou e, depois, de palavras-chave. Os casos do dia a dia ficam em `casos.test.ts`, um por linha.
 
+Na tela, o campo fica fixo embaixo e já abre com o foco. Enquanto se digita, a prévia aparece em chips — valor, categoria, dia, conta e quem pagou — e cada um troca com um toque. Enter salva, o gasto entra na lista na hora e um "Desfazer" fica 5 segundos à vista. Quem corrige a categoria vê a pergunta "sempre que aparecer *seu zé*?": com o sim, nasce uma regra da família. Sem valor, o Enter abre o campo de valor em vez de chutar.
+
 ## Login só por convite
 
 Na versão da família, entrar tem um caminho só: um convite para o seu e-mail do Google.
@@ -72,6 +74,7 @@ Abre em <http://localhost:3000>, em modo demo. Para o modo família, veja [Confi
 | :--- | :--- |
 | `npm run dev` | Servidor de desenvolvimento |
 | `npm test` | Testes (Vitest) |
+| `npm run test:tela` | Testes de tela no navegador (Playwright), depois de um build em modo demo |
 | `npm run lint` | ESLint |
 | `npm run build` | Build de produção |
 | `npm run criar-familia` | Cria a família e o convite do admin (uma vez, no modo família) |
@@ -104,6 +107,7 @@ Os testes em `tests/banco/` sobem um Postgres em memória ([PGlite](https://pgli
 
 ```text
 src/app/          telas (App Router): início, entrar, membros e a volta do login
+src/app/_inicio/  a tela de lançamento: o campo com a prévia em chips e a lista do mês
 src/componentes/  pedaços de tela usados em mais de um lugar
 src/proxy.ts      renova a sessão e manda para o login (modo família)
 src/lib/          regras e configuração, sem tela (modo.ts, resumo.ts)
@@ -115,7 +119,8 @@ supabase/         configuração e migrações do banco (Supabase CLI)
 tests/banco/      testes do schema, do RLS e dos convites num Postgres em memória
 tests/contrato/   a suíte que demo e Supabase precisam passar igual
 tests/supabase/   login por convite de ponta a ponta, no Supabase local do CI
-.github/workflows CI: lint, testes, build, auditoria e Supabase local a cada push
+e2e/              testes de tela no navegador (Playwright), no modo demo
+.github/workflows CI: lint, testes, build, testes de tela, auditoria e Supabase local
 ```
 
 ## Segurança
