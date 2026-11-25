@@ -2,7 +2,7 @@
 
 App para a família lançar gastos em segundos — digitando `50 ifood` — e ver, no fim do mês, quanto foi gasto, em quê e por quem.
 
-> 🚧 **Em desenvolvimento.** Por enquanto existem a fundação (estrutura, modos, testes e CI), o banco com RLS, a camada de dados dos dois modos, o login com Google por convite e a tela de membros. O lançamento de gastos vem a seguir.
+> 🚧 **Em desenvolvimento.** Por enquanto existem a fundação (estrutura, modos, testes e CI), o banco com RLS, a camada de dados dos dois modos, o login com Google por convite, a tela de membros e o parser do lançamento rápido. A tela de lançamento vem a seguir.
 
 ## Duas versões do mesmo código
 
@@ -24,6 +24,22 @@ As telas só conhecem a interface `Repositorio` (`src/lib/dados/`), e `obterRepo
 Cada modo carrega só o próprio código: a demo nunca baixa o cliente do Supabase. Os totais do mês saem de uma função pura (`resumo.ts`), a mesma nos dois modos, em centavos inteiros.
 
 Para os dois se comportarem igual, a **mesma suíte de testes de contrato** roda contra os dois: a demo no `npm test`, e o Supabase no CI, contra um Supabase local com login de verdade.
+
+## Lançamento rápido
+
+Um campo só: o texto vira um lançamento. Quem faz isso é `interpretar()` (`src/lib/lancamento-rapido/`), uma função pura — sem banco e sem tela, igual nos dois modos.
+
+| Digitado | Vira |
+| :--- | :--- |
+| `50 ifood` | R$ 50,00 · Delivery e restaurantes · hoje |
+| `32,90 farmácia ontem` | R$ 32,90 · Saúde · ontem |
+| `120 luz pix` | R$ 120,00 · Contas da casa · Pix |
+| `600 geladeira 10x nubank` | R$ 600,00 em 10 parcelas, no cartão Nubank |
+| `tênis em 3x de 99,90` | R$ 299,70 em 3 parcelas |
+| `+3500 salário` | Receita de R$ 3.500,00 |
+| `2 pizzas 80` | Não chuta: pergunta se o valor é 2 ou 80 |
+
+Ponto é milhar e vírgula é centavo, como no Brasil. "Dia 12", "12/11" e "sexta" são os mais recentes que não passam de hoje. A categoria vem primeiro das regras que a família ensinou e, depois, de palavras-chave. Os casos do dia a dia ficam em `casos.test.ts`, um por linha.
 
 ## Login só por convite
 
@@ -92,6 +108,7 @@ src/componentes/  pedaços de tela usados em mais de um lugar
 src/proxy.ts      renova a sessão e manda para o login (modo família)
 src/lib/          regras e configuração, sem tela (modo.ts, resumo.ts)
 src/lib/dados/    a interface Repositorio e as duas implementações
+src/lib/lancamento-rapido/  o parser do campo de lançamento ("50 ifood")
 src/lib/supabase/ os clientes do Supabase: navegador (cookies) e servidor
 scripts/          o seed da família (npm run criar-familia)
 supabase/         configuração e migrações do banco (Supabase CLI)
