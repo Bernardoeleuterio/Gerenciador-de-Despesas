@@ -203,4 +203,35 @@ export function testarContrato(criar: () => Promise<Repositorio>) {
   ])("remover membro %s dá nao_encontrado", async (_, id) => {
     await expect(repo.removerMembro(id)).rejects.toMatchObject({ codigo: "nao_encontrado" });
   });
+
+  it("a família começa sem regras de categoria", async () => {
+    expect(await repo.regras()).toEqual([]);
+  });
+
+  it("ensina uma regra, com o termo normalizado", async () => {
+    const mercado = base.categoriaId;
+    const regra = await repo.salvarRegra("  Seu  Zé ", mercado);
+    expect(regra).toEqual({ id: expect.any(String), termo: "seu ze", categoriaId: mercado });
+    expect(await repo.regras()).toEqual([regra]);
+  });
+
+  it("ensinar de novo o mesmo termo troca a categoria, sem duplicar", async () => {
+    const categorias = await repo.categorias();
+    const lazer = categorias.find((categoria) => categoria.nome === "Lazer")!;
+    const primeira = await repo.salvarRegra("academia", base.categoriaId);
+    const corrigida = await repo.salvarRegra("Academia", lazer.id);
+    expect(corrigida).toEqual({ id: primeira.id, termo: "academia", categoriaId: lazer.id });
+    expect(await repo.regras()).toEqual([corrigida]);
+  });
+
+  it.each([
+    ["sem termo", "   ", undefined],
+    ["com termo longo demais", "a".repeat(61), undefined],
+    ["com categoria de fora da família", "ifood", ALHEIO],
+  ])("recusa regra %s", async (_, termo, categoriaId) => {
+    await expect(repo.salvarRegra(termo, categoriaId ?? base.categoriaId)).rejects.toMatchObject({
+      codigo: "invalido",
+    });
+    expect(await repo.regras()).toEqual([]);
+  });
 }

@@ -12,6 +12,7 @@ import {
   type Membro,
   type NovoConvite,
   type NovoLancamento,
+  type Regra,
   type Repositorio,
 } from "./repositorio";
 import {
@@ -19,6 +20,7 @@ import {
   validarAlteracaoLancamento,
   validarNovoConvite,
   validarNovoLancamento,
+  validarRegra,
 } from "./validacao";
 
 // As linhas como o banco devolve (snake_case).
@@ -48,6 +50,18 @@ interface LinhaLancamento {
   conta_id: string | null;
   pago_por: string | null;
   status: Lancamento["status"];
+}
+
+interface LinhaRegra {
+  id: string;
+  termo: string;
+  categoria_id: string;
+}
+
+const COLUNAS_REGRA = "id, termo, categoria_id";
+
+function paraRegra(linha: LinhaRegra): Regra {
+  return { id: linha.id, termo: linha.termo, categoriaId: linha.categoria_id };
 }
 
 const COLUNAS_LANCAMENTO =
@@ -314,6 +328,37 @@ export class RepositorioSupabase implements Repositorio {
       .select("id");
     if (error) throw traduzir(error);
     if (data.length === 0) throw naoEncontrado("Membro");
+  }
+
+  async regras(): Promise<Regra[]> {
+    const linhas = await this.listar<LinhaRegra>("regras", COLUNAS_REGRA);
+    return ordenarPor(linhas.map(paraRegra), (regra) => regra.termo);
+  }
+
+  async salvarRegra(termo: string, categoriaId: string): Promise<Regra> {
+    const dados = validarRegra(termo, categoriaId);
+    const { familia } = await this.contexto();
+    const tabela = () => this.cliente.from("regras");
+
+    // Já existe? Troca a categoria. Senão, cria. (Dois em paralelo criando o
+    // mesmo termo: o segundo esbarra no unique e cai na troca.)
+    for (let tentativa = 0; tentativa < 2; tentativa++) {
+      const trocada = await tabela()
+        .update({ categoria_id: dados.categoriaId })
+        .eq("familia_id", familia.id)
+        .eq("termo", dados.termo)
+        .select(COLUNAS_REGRA);
+      if (trocada.error) throw traduzir(trocada.error);
+      if (trocada.data.length > 0) return paraRegra(trocada.data[0] as LinhaRegra);
+
+      const criada = await tabela()
+        .insert({ familia_id: familia.id, termo: dados.termo, categoria_id: dados.categoriaId })
+        .select(COLUNAS_REGRA)
+        .single();
+      if (!criada.error) return paraRegra(criada.data as LinhaRegra);
+      if (criada.error.code !== "23505") throw traduzir(criada.error);
+    }
+    throw new ErroRepositorio("indisponivel", MENSAGEM.indisponivel);
   }
 
   private async listar<T>(tabela: string, colunas: string): Promise<T[]> {

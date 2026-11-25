@@ -69,6 +69,14 @@ export interface NovoLancamento {
 
 export type AlteracaoLancamento = Partial<NovoLancamento>;
 
+/** Uma regra que a família ensinou: quando o texto tem o termo, a categoria é esta. */
+export interface Regra {
+  id: string;
+  /** Minúsculo, sem acento e sem espaço sobrando: "ifood", "seu ze". */
+  termo: string;
+  categoriaId: string;
+}
+
 /** Um convite que ainda não virou membro. */
 export interface Convite {
   id: string;
@@ -109,6 +117,10 @@ export interface Repositorio {
   cancelarConvite(id: string): Promise<void>;
   /** Só o admin, e nunca a si mesmo. Os lançamentos ficam, sem "quem pagou". */
   removerMembro(id: string): Promise<void>;
+  /** As regras de categoria da família, por termo. */
+  regras(): Promise<Regra[]>;
+  /** Ensina a regra do termo — ou troca a categoria, se ela já existe. */
+  salvarRegra(termo: string, categoriaId: string): Promise<Regra>;
 }
 
 export type CodigoErro = "invalido" | "nao_encontrado" | "sem_permissao" | "indisponivel";

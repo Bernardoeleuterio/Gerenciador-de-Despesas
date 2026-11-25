@@ -11,6 +11,7 @@ import {
   type Membro,
   type NovoConvite,
   type NovoLancamento,
+  type Regra,
   type Repositorio,
 } from "./repositorio";
 import {
@@ -18,6 +19,7 @@ import {
   validarAlteracaoLancamento,
   validarNovoConvite,
   validarNovoLancamento,
+  validarRegra,
 } from "./validacao";
 
 /** O pedaço do localStorage que a demo usa — injetável, para testar sem navegador. */
@@ -44,6 +46,7 @@ interface EstadoDemo {
   lancamentos: LancamentoGuardado[];
   proximaSequencia: number;
   convites: Convite[];
+  regras: Regra[];
 }
 
 function estadoInicial(): EstadoDemo {
@@ -78,6 +81,7 @@ function estadoInicial(): EstadoDemo {
     lancamentos: [],
     proximaSequencia: 1,
     convites: [],
+    regras: [],
   };
 }
 
@@ -94,8 +98,12 @@ function carregar(armazenamento: Armazenamento | null): EstadoDemo | null {
       Array.isArray(estado.contas) &&
       Array.isArray(estado.lancamentos);
     if (!valido) return null;
-    // Guardado antes dos convites existirem: segue valendo, sem convite nenhum
-    return { ...(estado as EstadoDemo), convites: Array.isArray(estado.convites) ? estado.convites : [] };
+    // Guardado antes dos convites e das regras existirem: segue valendo, sem nenhum
+    return {
+      ...(estado as EstadoDemo),
+      convites: Array.isArray(estado.convites) ? estado.convites : [],
+      regras: Array.isArray(estado.regras) ? estado.regras : [],
+    };
   } catch {
     // JSON quebrado ou armazenamento bloqueado (aba anônima): começa do zero
     return null;
@@ -247,6 +255,23 @@ export class RepositorioDemo implements Repositorio {
       if (conta.donoId === id) conta.donoId = null;
     }
     this.salvar();
+  }
+
+  async regras(): Promise<Regra[]> {
+    return ordenarPor(structuredClone(this.estado.regras), (regra) => regra.termo);
+  }
+
+  async salvarRegra(termo: string, categoriaId: string): Promise<Regra> {
+    const dados = validarRegra(termo, categoriaId);
+    this.conferirReferencias({ categoriaId: dados.categoriaId });
+    let regra = this.estado.regras.find((existente) => existente.termo === dados.termo);
+    if (regra) regra.categoriaId = dados.categoriaId;
+    else {
+      regra = { id: crypto.randomUUID(), ...dados };
+      this.estado.regras.push(regra);
+    }
+    this.salvar();
+    return structuredClone(regra);
   }
 
   private souAdmin(): boolean {

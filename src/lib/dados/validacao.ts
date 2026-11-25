@@ -28,6 +28,21 @@ const esquemaAlteracaoLancamento = esquemaNovoLancamento.partial();
 
 const esquemaMes = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 
+/** "  iFood " → "ifood"; "Seu  Zé" → "seu ze": é assim que a regra é guardada e comparada. */
+export function normalizarTermo(termo: string): string {
+  return termo
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const esquemaRegra = z.strictObject({
+  termo: z.string().transform(normalizarTermo).pipe(z.string().min(1).max(60)),
+  categoriaId: z.uuid(),
+});
+
 // O e-mail é normalizado antes de validar: é assim que o banco guarda e compara.
 const esquemaNovoConvite = z.strictObject({
   email: z.string().trim().toLowerCase().max(254).pipe(z.email()),
@@ -50,6 +65,10 @@ export function validarNovoLancamento(novo: NovoLancamento): NovoLancamento {
 
 export function validarAlteracaoLancamento(mudancas: AlteracaoLancamento): AlteracaoLancamento {
   return validar(esquemaAlteracaoLancamento, mudancas, "Alteração");
+}
+
+export function validarRegra(termo: string, categoriaId: string): { termo: string; categoriaId: string } {
+  return validar(esquemaRegra, { termo, categoriaId }, "Regra");
 }
 
 export function validarNovoConvite(novo: NovoConvite): NovoConvite {
