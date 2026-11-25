@@ -1,10 +1,18 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Gerenciador de Despesas",
   description:
     "Lance um gasto em segundos e veja no fim do mês quanto a família gastou, em quê e por quem.",
+};
+
+// Com o teclado do celular aberto, a página encolhe junto (o campo de
+// lançamento, fixo embaixo, sobe e continua à vista).
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  interactiveWidget: "resizes-content",
 };
 
 // Fonte do sistema (sem next/font): carrega na hora no celular, tem cara de
