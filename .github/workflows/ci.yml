@@ -46,6 +46,13 @@ jobs:
         env:
           NEXT_PUBLIC_MODO: demo
 
+      # A tela de lançamento num navegador de verdade, contra o build acima
+      - name: Navegador para os testes de tela
+        run: npx playwright install --with-deps chromium
+
+      - name: Testes de tela (Playwright, modo demo)
+        run: npx playwright test
+
   banco:
     name: Supabase local (migrações, advisor e contrato)
     runs-on: ubuntu-latest
