@@ -404,3 +404,57 @@ describe("convites: só entra quem foi convidado", () => {
     expect(visto.rows).toEqual([]);
   });
 });
+
+describe("regras de categoria", () => {
+  const regra = (usuario: string | null, familia: string, termo: string, categoriaId: string) =>
+    como(usuario, () =>
+      db.query("insert into regras (familia_id, termo, categoria_id) values ($1, $2, $3) returning id", [
+        familia,
+        termo,
+        categoriaId,
+      ]),
+    );
+
+  it("qualquer membro ensina uma regra, e só a família dele vê", async () => {
+    await regra(MEMBRO_A, FAMILIA_A, "seu ze", await categoria(FAMILIA_A, "Mercado"));
+    const daA = await como(ADMIN_A, () => db.query<{ termo: string }>("select termo from regras"));
+    expect(daA.rows).toEqual([{ termo: "seu ze" }]);
+    const daB = await como(ADMIN_B, () => db.query("select termo from regras"));
+    expect(daB.rows).toEqual([]);
+  });
+
+  it("não aponta para categoria de outra família (FK composta)", async () => {
+    await expect(
+      regra(ADMIN_A, FAMILIA_A, "posto x", await categoria(FAMILIA_B, "Transporte")),
+    ).rejects.toThrow(/foreign key/);
+  });
+
+  it("nem cria regra na família dos outros", async () => {
+    await expect(
+      regra(ADMIN_A, FAMILIA_B, "invasao", await categoria(FAMILIA_B, "Lazer")),
+    ).rejects.toThrow(/row-level security/);
+  });
+
+  it("um termo por família, e sempre minúsculo e sem espaço nas pontas", async () => {
+    const mercado = await categoria(FAMILIA_A, "Mercado");
+    await expect(regra(ADMIN_A, FAMILIA_A, "seu ze", mercado)).rejects.toThrow(/duplicate key/);
+    await expect(regra(ADMIN_A, FAMILIA_A, "Feira Livre", mercado)).rejects.toThrow(/check/);
+    await expect(regra(ADMIN_A, FAMILIA_A, " feira ", mercado)).rejects.toThrow(/check/);
+  });
+
+  it("trocar a categoria pode; trocar o termo ou a família, não", async () => {
+    const lazer = await categoria(FAMILIA_A, "Lazer");
+    const trocou = await como(MEMBRO_A, () =>
+      db.query("update regras set categoria_id = $1 where termo = 'seu ze'", [lazer]),
+    );
+    expect(trocou.affectedRows).toBe(1);
+    await expect(
+      como(MEMBRO_A, () => db.query("update regras set termo = 'outro' where termo = 'seu ze'")),
+    ).rejects.toThrow(/permission denied/);
+  });
+
+  it("sem login, nada", async () => {
+    await expect(como(null, () => db.query("select * from regras"))).rejects.toThrow(/permission denied/);
+  });
+});
+
